@@ -233,16 +233,26 @@ router.delete('/:id', getProduct, async (req, res) => {
     ];
     await res.product.save();
 
-    // Archive the product's change history before deletion
-    await DeletedProductLog.create({
-      itemCode: res.product.itemCode,
-      itemName: res.product.itemName,
-      category: res.product.category,
-      supplierName: res.product.supplierName,
-      deletedAt: new Date(),
-      changeHistory: res.product.changeHistory,
-    });
+    // ARCHIVE: Save to DeletedProductLog BEFORE deleting
+    let archive;
+    try {
+      archive = await DeletedProductLog.create({
+        itemCode: res.product.itemCode,
+        itemName: res.product.itemName,
+        category: res.product.category,
+        supplierName: res.product.supplierName,
+        deletedAt: new Date(),
+        changeHistory: res.product.changeHistory,
+      });
+    } catch (archiveErr) {
+      return res.status(500).json({ message: 'Failed to archive deleted product. Product was NOT deleted.', error: archiveErr.message });
+    }
 
+    if (!archive) {
+      return res.status(500).json({ message: 'Failed to archive deleted product. Product was NOT deleted.' });
+    }
+
+    // DELETE: Remove from main collection
     await res.product.deleteOne();
     res.json({ message: 'Deleted Product' });
   } catch (err) {
