@@ -26,9 +26,12 @@ const upload = multer({
 // GET: Get all products (only non-deleted)
 router.get('/', async (req, res) => {
   try {
+    console.log('Fetching products - filtering out deleted products');
     const products = await Product.find({ deleted: { $ne: true } });
+    console.log(`Found ${products.length} active products`);
     res.json(products);
   } catch (err) {
+    console.error('Error fetching products:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -146,6 +149,7 @@ router.patch('/:id', getProduct, async (req, res) => {
   // Handle soft delete
   if (updates.isDeleted === true) {
     const changedBy = updates.changedBy || 'system';
+    console.log('Soft deleting product:', res.product.itemName, 'ID:', res.product._id);
     
     // Add delete log to change history
     res.product.changeHistory = [
@@ -165,10 +169,16 @@ router.patch('/:id', getProduct, async (req, res) => {
     res.product.deletedAt = new Date();
     res.product.deletedBy = changedBy;
 
+    console.log('Product before save - deleted flag:', res.product.deleted);
+    console.log('Product before save - deletedAt:', res.product.deletedAt);
+    console.log('Product before save - deletedBy:', res.product.deletedBy);
+
     try {
       await res.product.save();
+      console.log('Product saved successfully with deleted flag');
       res.json({ message: 'Product marked as deleted' });
     } catch (err) {
+      console.error('Error saving deleted product:', err);
       res.status(500).json({ message: err.message });
     }
     return;
@@ -372,7 +382,10 @@ router.patch('/soft-delete/:id', getProduct, async (req, res) => {
     res.product.deletedAt = new Date();
     res.product.deletedBy = changedBy;
 
-    console.log('Saving product with deleted flag:', res.product.itemName);
+    console.log('Product before save - deleted flag:', res.product.deleted);
+    console.log('Product before save - deletedAt:', res.product.deletedAt);
+    console.log('Product before save - deletedBy:', res.product.deletedBy);
+
     await res.product.save();
     console.log('Product soft deleted successfully:', res.product.itemName);
     res.json({ message: 'Product marked as deleted' });
