@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const Supplier = require('../models/Supplier');
 const GRN = require('../models/GRN');
+const Product = require('../models/Product');
 
 // GET: Get all suppliers
 router.get('/', async (req, res) => {
@@ -156,6 +157,25 @@ router.post('/:id/items', getSupplier, async (req, res) => {
     changeType: 'cart'
   }];
 
+  // Also log to Product's changeHistory if product exists
+  try {
+    const product = await Product.findOne({ itemCode: item.itemCode });
+    if (product) {
+      product.changeHistory = [...(product.changeHistory || []), {
+        field: 'cart',
+        oldValue: null,
+        newValue: item,
+        changedBy: req.body.changedBy || 'system',
+        changedAt: new Date(),
+        changeType: 'cart'
+      }];
+      await product.save();
+    }
+  } catch (err) {
+    // Log but do not block supplier save
+    console.error('Error updating product changeHistory for cart add:', err);
+  }
+
   try {
     const updatedSupplier = await res.supplier.save();
     res.status(201).json(updatedSupplier);
@@ -191,6 +211,25 @@ router.patch('/:id/items/:itemIndex', getSupplier, async (req, res) => {
     changedAt: new Date(),
     changeType: 'cart'
   }];
+
+  // Also log to Product's changeHistory if product exists
+  try {
+    const product = await Product.findOne({ itemCode: item.itemCode });
+    if (product) {
+      product.changeHistory = [...(product.changeHistory || []), {
+        field: 'cart',
+        oldValue: oldItem,
+        newValue: item,
+        changedBy: req.body.changedBy || 'system',
+        changedAt: new Date(),
+        changeType: 'cart'
+      }];
+      await product.save();
+    }
+  } catch (err) {
+    // Log but do not block supplier save
+    console.error('Error updating product changeHistory for cart update:', err);
+  }
 
   try {
     const updatedSupplier = await res.supplier.save();
