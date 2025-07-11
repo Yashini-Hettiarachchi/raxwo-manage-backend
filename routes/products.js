@@ -984,4 +984,39 @@ router.post('/backfill-stock-history', async (req, res) => {
   }
 });
 
+// PUT: Inactivate a product (move to inactive_products collection)
+router.put('/inactivate/:id', async (req, res) => {
+  try {
+    const { username } = req.body;
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    // Copy to inactive collection
+    const inactive = new InactiveProduct({
+      ...product.toObject(),
+      deletedBy: username,
+      deletedAt: new Date(),
+      originalProductId: product._id,
+    });
+    await inactive.save();
+
+    // Remove from active collection
+    await product.deleteOne();
+
+    res.json({ message: 'Product moved to inactive', inactiveProductId: inactive._id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: List all inactive products
+router.get('/inactive', async (req, res) => {
+  try {
+    const inactives = await InactiveProduct.find().sort({ deletedAt: -1 });
+    res.json(inactives);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
