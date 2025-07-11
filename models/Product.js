@@ -64,7 +64,11 @@ const productSchema = new mongoose.Schema({
   // Add deleted flag to track soft-deleted products
   deleted: { type: Boolean, default: false },
   deletedAt: { type: Date },
-  deletedBy: { type: String }
+  deletedBy: { type: String },
+  // Add visible flag to track product visibility
+  visible: { type: Boolean, default: true },
+  hiddenAt: { type: Date },
+  hiddenBy: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);
