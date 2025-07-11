@@ -5,7 +5,6 @@ const XLSX = require('xlsx');
 const router = express.Router();
 const Product = require('../models/Product');
 const ExcelProduct = require('../models/ExcelProduct');
-const DeletedProduct = require('../models/DeletedProduct');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -206,47 +205,24 @@ router.put('/:id', getProduct, async (req, res) => {
   }
 });
 
-// DELETE: Remove a product and archive it
+// DELETE: Remove a product
 router.delete('/:id', getProduct, async (req, res) => {
   try {
-    // Add delete log to changeHistory
-    res.product.changeHistory = [...(res.product.changeHistory || []), {
-      field: 'product',
-      oldValue: JSON.stringify(res.product),
-      newValue: null,
-      changedBy: req.body.changedBy || 'system',
-      changedAt: new Date(),
-      changeType: 'delete'
-    }];
+    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
+    res.product.changeHistory = [
+      ...(res.product.changeHistory || []),
+      {
+        field: 'product',
+        oldValue: JSON.stringify(res.product),
+        newValue: null,
+        changedBy,
+        changedAt: new Date(),
+        changeType: 'delete'
+      }
+    ];
     await res.product.save();
-
-    // Save a copy to DeletedProduct
-    const deletedProduct = new DeletedProduct({
-      itemCode: res.product.itemCode,
-      itemName: res.product.itemName,
-      category: res.product.category,
-      buyingPrice: res.product.buyingPrice,
-      sellingPrice: res.product.sellingPrice,
-      stock: res.product.stock,
-      supplierName: res.product.supplierName,
-      changeHistory: res.product.changeHistory,
-      deletedAt: new Date()
-    });
-    await deletedProduct.save();
-
-    // Now delete the product
     await res.product.deleteOne();
     res.json({ message: 'Deleted Product' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// GET: Fetch all deleted products for activity log
-router.get('/deleted/all', async (req, res) => {
-  try {
-    const deletedProducts = await DeletedProduct.find().sort({ deletedAt: -1 });
-    res.json(deletedProducts);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
