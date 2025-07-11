@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 const API_URL = 'https://raxwo-manage-backend-production.up.railway.app/api/products';
 

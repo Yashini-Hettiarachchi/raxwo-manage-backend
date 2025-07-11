@@ -109,62 +109,6 @@ router.get('/deleted-logs', async (req, res) => {
   }
 });
 
-// POST: Log a product deletion (for tracking deletions from frontend)
-router.post('/deletion-log', async (req, res) => {
-  try {
-    const { 
-      productId, 
-      itemCode, 
-      itemName, 
-      category, 
-      supplierName, 
-      deletedBy, 
-      deletionType, 
-      changeHistory 
-    } = req.body;
-
-    // Validate required fields
-    if (!itemCode || !itemName || !deletedBy || !deletionType) {
-      return res.status(400).json({ 
-        message: 'Missing required fields: itemCode, itemName, deletedBy, deletionType are required' 
-      });
-    }
-
-    // Create deletion log
-    const deletionLog = new DeletedProductLog({
-      itemCode,
-      itemName,
-      category: category || 'Unknown',
-      supplierName: supplierName || 'Unknown',
-      deletedAt: new Date(),
-      deletedBy,
-      deletionType, // 'hard' or 'soft'
-      originalProductId: productId,
-      changeHistory: changeHistory || []
-    });
-
-    await deletionLog.save();
-    console.log('Deletion log created:', deletionLog.itemName, 'by', deletedBy, 'type:', deletionType);
-
-    res.status(201).json({ 
-      message: 'Deletion logged successfully',
-      logId: deletionLog._id,
-      deletedProduct: {
-        itemCode,
-        itemName,
-        category,
-        supplierName,
-        deletedAt: deletionLog.deletedAt,
-        deletedBy,
-        deletionType
-      }
-    });
-  } catch (err) {
-    console.error('Error logging deletion:', err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // Middleware: Function to get a product by ID with ObjectId validation
 async function getProduct(req, res, next) {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -266,6 +210,62 @@ router.patch('/soft-delete/:id', getProduct, async (req, res) => {
 // GET: Get a single product by ID
 router.get('/:id', getProduct, (req, res) => {
   res.json(res.product);
+});
+
+// POST: Log a product deletion (for tracking deletions from frontend)
+router.post('/deletion-log', async (req, res) => {
+  try {
+    const { 
+      productId, 
+      itemCode, 
+      itemName, 
+      category, 
+      supplierName, 
+      deletedBy, 
+      deletionType, 
+      changeHistory 
+    } = req.body;
+
+    // Validate required fields
+    if (!itemCode || !itemName || !deletedBy || !deletionType) {
+      return res.status(400).json({ 
+        message: 'Missing required fields: itemCode, itemName, deletedBy, deletionType are required' 
+      });
+    }
+
+    // Create deletion log
+    const deletionLog = new DeletedProductLog({
+      itemCode,
+      itemName,
+      category: category || 'Unknown',
+      supplierName: supplierName || 'Unknown',
+      deletedAt: new Date(),
+      deletedBy,
+      deletionType, // 'hard' or 'soft'
+      originalProductId: productId,
+      changeHistory: changeHistory || []
+    });
+
+    await deletionLog.save();
+    console.log('Deletion log created:', deletionLog.itemName, 'by', deletedBy, 'type:', deletionType);
+
+    res.status(201).json({ 
+      message: 'Deletion logged successfully',
+      logId: deletionLog._id,
+      deletedProduct: {
+        itemCode,
+        itemName,
+        category,
+        supplierName,
+        deletedAt: deletionLog.deletedAt,
+        deletedBy,
+        deletionType
+      }
+    });
+  } catch (err) {
+    console.error('Error logging deletion:', err);
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // POST: Create a new product
