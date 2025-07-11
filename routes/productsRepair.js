@@ -176,7 +176,7 @@ router.patch("/update-cart/:id", getRepair, async (req, res) => {
           newValue: newStock,
           changedBy: req.body.changedBy || 'system',
           changedAt: new Date(),
-          changeType: 'update'
+          changeType: 'select' // Changed from 'update' to 'select'
         }
       ];
 
