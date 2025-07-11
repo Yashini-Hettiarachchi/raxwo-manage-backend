@@ -6,6 +6,7 @@ const router = express.Router();
 const Product = require('../models/Product');
 const ExcelProduct = require('../models/ExcelProduct');
 const DeletedProductLog = require('../models/DeletedProductLog');
+const DeletedProduct = require('../models/DeletedProduct');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -36,12 +37,54 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET: Get all deleted products
+// GET: Get all deleted products from deleted_products collection
 router.get('/deleted', async (req, res) => {
   try {
-    const products = await Product.find({ deleted: true }).sort({ deletedAt: -1 });
-    res.json(products);
+    const deletedProducts = await DeletedProduct.find().sort({ deletedAt: -1 });
+    res.json(deletedProducts);
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Get a specific deleted product by ID
+router.get('/deleted/:id', async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid product ID format' });
+    }
+
+    const deletedProduct = await DeletedProduct.findById(req.params.id);
+    if (!deletedProduct) {
+      return res.status(404).json({ message: 'Deleted product not found' });
+    }
+    res.json(deletedProduct);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE: Permanently delete a product from deleted_products collection
+router.delete('/deleted/:id', async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid product ID format' });
+    }
+
+    const deletedProduct = await DeletedProduct.findById(req.params.id);
+    if (!deletedProduct) {
+      return res.status(404).json({ message: 'Deleted product not found' });
+    }
+
+    // Also permanently delete from original collection if it still exists
+    await Product.findByIdAndDelete(deletedProduct.originalProductId);
+
+    // Remove from deleted_products collection
+    await DeletedProduct.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Product permanently deleted from both collections' });
+  } catch (err) {
+    console.error('Error permanently deleting product:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -358,7 +401,7 @@ router.get('/itemCode/:itemCode', async (req, res) => {
   }
 });
 
-// PATCH: Soft delete a product (mark as deleted instead of removing)
+// PATCH: Soft delete a product (mark as deleted and copy to deleted_products collection)
 router.patch('/soft-delete/:id', getProduct, async (req, res) => {
   try {
     console.log('Soft deleting product:', req.params.id);
@@ -377,7 +420,7 @@ router.patch('/soft-delete/:id', getProduct, async (req, res) => {
       }
     ];
 
-    // Mark as deleted
+    // Mark as deleted in original collection
     res.product.deleted = true;
     res.product.deletedAt = new Date();
     res.product.deletedBy = changedBy;
@@ -386,41 +429,108 @@ router.patch('/soft-delete/:id', getProduct, async (req, res) => {
     console.log('Product before save - deletedAt:', res.product.deletedAt);
     console.log('Product before save - deletedBy:', res.product.deletedBy);
 
+    // Save the updated product in original collection
     await res.product.save();
-    console.log('Product soft deleted successfully:', res.product.itemName);
-    res.json({ message: 'Product marked as deleted' });
+    console.log('Product soft deleted successfully in original collection:', res.product.itemName);
+
+    // Copy to deleted_products collection
+    try {
+      const deletedProduct = new DeletedProduct({
+        itemCode: res.product.itemCode,
+        itemName: res.product.itemName,
+        category: res.product.category,
+        buyingPrice: res.product.buyingPrice,
+        sellingPrice: res.product.sellingPrice,
+        stock: res.product.stock,
+        supplierName: res.product.supplierName,
+        newBuyingPrice: res.product.newBuyingPrice,
+        newSellingPrice: res.product.newSellingPrice,
+        newStock: res.product.newStock,
+        oldStock: res.product.oldStock,
+        oldBuyingPrice: res.product.oldBuyingPrice,
+        oldSellingPrice: res.product.oldSellingPrice,
+        changeHistory: res.product.changeHistory,
+        deleted: true,
+        deletedAt: new Date(),
+        deletedBy: changedBy,
+        originalProductId: res.product._id
+      });
+
+      await deletedProduct.save();
+      console.log('Product copied to deleted_products collection successfully');
+      
+      res.json({ 
+        message: 'Product marked as deleted and copied to deleted products collection',
+        originalProductId: res.product._id,
+        deletedProductId: deletedProduct._id
+      });
+    } catch (copyErr) {
+      console.error('Error copying to deleted_products collection:', copyErr);
+      // Even if copying fails, the product is still soft-deleted in original collection
+      res.json({ 
+        message: 'Product marked as deleted but failed to copy to deleted products collection',
+        error: copyErr.message,
+        originalProductId: res.product._id
+      });
+    }
   } catch (err) {
     console.error('Error soft deleting product:', err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// PATCH: Restore a deleted product
-router.patch('/restore/:id', getProduct, async (req, res) => {
+// PATCH: Restore a deleted product from deleted_products collection
+router.patch('/restore/:id', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid product ID format' });
+    }
+
     const changedBy = req.body.changedBy || req.query.changedBy || 'system';
     
+    // Find the deleted product in deleted_products collection
+    const deletedProduct = await DeletedProduct.findById(req.params.id);
+    if (!deletedProduct) {
+      return res.status(404).json({ message: 'Deleted product not found' });
+    }
+
+    // Find the original product in the main collection
+    const originalProduct = await Product.findById(deletedProduct.originalProductId);
+    if (!originalProduct) {
+      return res.status(404).json({ message: 'Original product not found' });
+    }
+
     // Add restore log to change history
-    res.product.changeHistory = [
-      ...(res.product.changeHistory || []),
+    originalProduct.changeHistory = [
+      ...(originalProduct.changeHistory || []),
       {
         field: 'product',
         oldValue: null,
-        newValue: JSON.stringify(res.product),
+        newValue: JSON.stringify(originalProduct),
         changedBy,
         changedAt: new Date(),
         changeType: 'restore'
       }
     ];
 
-    // Mark as not deleted
-    res.product.deleted = false;
-    res.product.deletedAt = undefined;
-    res.product.deletedBy = undefined;
+    // Mark as not deleted in original collection
+    originalProduct.deleted = false;
+    originalProduct.deletedAt = undefined;
+    originalProduct.deletedBy = undefined;
 
-    await res.product.save();
-    res.json({ message: 'Product restored successfully' });
+    await originalProduct.save();
+    console.log('Product restored successfully in original collection');
+
+    // Remove from deleted_products collection
+    await DeletedProduct.findByIdAndDelete(req.params.id);
+    console.log('Product removed from deleted_products collection');
+
+    res.json({ 
+      message: 'Product restored successfully',
+      originalProductId: originalProduct._id
+    });
   } catch (err) {
+    console.error('Error restoring product:', err);
     res.status(500).json({ message: err.message });
   }
 });
