@@ -302,6 +302,62 @@ router.get('/inactive', async (req, res) => {
   }
 });
 
+// PUT: Toggle product visibility
+router.put('/toggle-visibility/:id', async (req, res) => {
+  try {
+    const { username } = req.body;
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    // Toggle visibility
+    product.visible = !product.visible;
+    
+    if (!product.visible) {
+      // Product is being hidden
+      product.hiddenAt = new Date();
+      product.hiddenBy = username;
+    } else {
+      // Product is being made visible again
+      product.hiddenAt = undefined;
+      product.hiddenBy = undefined;
+    }
+
+    // Add to change history
+    product.changeHistory = [
+      ...(product.changeHistory || []),
+      {
+        field: 'visibility',
+        oldValue: !product.visible,
+        newValue: product.visible,
+        changedBy: username,
+        changedAt: new Date(),
+        changeType: product.visible ? 'restore' : 'hide'
+      }
+    ];
+
+    await product.save();
+    
+    const action = product.visible ? 'made visible' : 'hidden';
+    res.json({ 
+      message: `Product ${action} successfully`,
+      visible: product.visible,
+      productId: product._id
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: List all hidden products
+router.get('/hidden', async (req, res) => {
+  try {
+    const hiddenProducts = await Product.find({ visible: false }).sort({ hiddenAt: -1 });
+    res.json(hiddenProducts);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // GET: Get a single product by ID
 router.get('/:id', getProduct, (req, res) => {
   res.json(res.product);
@@ -1017,62 +1073,6 @@ router.post('/backfill-stock-history', async (req, res) => {
       updatedCount++;
     }
     res.json({ message: `Backfilled stock changeHistory for ${updatedCount} products.` });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// PUT: Toggle product visibility
-router.put('/toggle-visibility/:id', async (req, res) => {
-  try {
-    const { username } = req.body;
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ message: 'Product not found' });
-
-    // Toggle visibility
-    product.visible = !product.visible;
-    
-    if (!product.visible) {
-      // Product is being hidden
-      product.hiddenAt = new Date();
-      product.hiddenBy = username;
-    } else {
-      // Product is being made visible again
-      product.hiddenAt = undefined;
-      product.hiddenBy = undefined;
-    }
-
-    // Add to change history
-    product.changeHistory = [
-      ...(product.changeHistory || []),
-      {
-        field: 'visibility',
-        oldValue: !product.visible,
-        newValue: product.visible,
-        changedBy: username,
-        changedAt: new Date(),
-        changeType: product.visible ? 'restore' : 'hide'
-      }
-    ];
-
-    await product.save();
-    
-    const action = product.visible ? 'made visible' : 'hidden';
-    res.json({ 
-      message: `Product ${action} successfully`,
-      visible: product.visible,
-      productId: product._id
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// GET: List all hidden products
-router.get('/hidden', async (req, res) => {
-  try {
-    const hiddenProducts = await Product.find({ visible: false }).sort({ hiddenAt: -1 });
-    res.json(hiddenProducts);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
