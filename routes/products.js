@@ -43,6 +43,16 @@ router.get('/excel-uploads', async (req, res) => {
   }
 });
 
+// GET: Fetch all deleted product logs (must be before any /:id route)
+router.get('/deleted-logs', async (req, res) => {
+  try {
+    const logs = await DeletedProductLog.find().sort({ deletedAt: -1 });
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Middleware: Function to get a product by ID with ObjectId validation
 async function getProduct(req, res, next) {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -235,16 +245,6 @@ router.delete('/:id', getProduct, async (req, res) => {
 
     await res.product.deleteOne();
     res.json({ message: 'Deleted Product' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// GET: Fetch all deleted product logs
-router.get('/deleted-logs', async (req, res) => {
-  try {
-    const logs = await DeletedProductLog.find().sort({ deletedAt: -1 });
-    res.json(logs);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
