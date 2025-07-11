@@ -129,6 +129,84 @@ async function getProduct(req, res, next) {
   next();
 }
 
+// PATCH: Soft delete a product (mark as deleted and copy to deleted_products collection)
+router.patch('/soft-delete/:id', getProduct, async (req, res) => {
+  try {
+    console.log('Soft deleting product:', req.params.id);
+    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
+    
+    // Add delete log to change history
+    res.product.changeHistory = [
+      ...(res.product.changeHistory || []),
+      {
+        field: 'product',
+        oldValue: JSON.stringify(res.product),
+        newValue: null,
+        changedBy,
+        changedAt: new Date(),
+        changeType: 'delete'
+      }
+    ];
+
+    // Mark as deleted in original collection
+    res.product.deleted = true;
+    res.product.deletedAt = new Date();
+    res.product.deletedBy = changedBy;
+
+    console.log('Product before save - deleted flag:', res.product.deleted);
+    console.log('Product before save - deletedAt:', res.product.deletedAt);
+    console.log('Product before save - deletedBy:', res.product.deletedBy);
+
+    // Save the updated product in original collection
+    await res.product.save();
+    console.log('Product soft deleted successfully in original collection:', res.product.itemName);
+
+    // Copy to deleted_products collection
+    try {
+      const deletedProduct = new DeletedProduct({
+        itemCode: res.product.itemCode,
+        itemName: res.product.itemName,
+        category: res.product.category,
+        buyingPrice: res.product.buyingPrice,
+        sellingPrice: res.product.sellingPrice,
+        stock: res.product.stock,
+        supplierName: res.product.supplierName,
+        newBuyingPrice: res.product.newBuyingPrice,
+        newSellingPrice: res.product.newSellingPrice,
+        newStock: res.product.newStock,
+        oldStock: res.product.oldStock,
+        oldBuyingPrice: res.product.oldBuyingPrice,
+        oldSellingPrice: res.product.oldSellingPrice,
+        changeHistory: res.product.changeHistory,
+        deleted: true,
+        deletedAt: new Date(),
+        deletedBy: changedBy,
+        originalProductId: res.product._id
+      });
+
+      await deletedProduct.save();
+      console.log('Product copied to deleted_products collection successfully');
+      
+      res.json({ 
+        message: 'Product marked as deleted and copied to deleted products collection',
+        originalProductId: res.product._id,
+        deletedProductId: deletedProduct._id
+      });
+    } catch (copyErr) {
+      console.error('Error copying to deleted_products collection:', copyErr);
+      // Even if copying fails, the product is still soft-deleted in original collection
+      res.json({ 
+        message: 'Product marked as deleted but failed to copy to deleted products collection',
+        error: copyErr.message,
+        originalProductId: res.product._id
+      });
+    }
+  } catch (err) {
+    console.error('Error soft deleting product:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // GET: Get a single product by ID
 router.get('/:id', getProduct, (req, res) => {
   res.json(res.product);
@@ -397,84 +475,6 @@ router.get('/itemCode/:itemCode', async (req, res) => {
     }
     res.json(product);
   } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// PATCH: Soft delete a product (mark as deleted and copy to deleted_products collection)
-router.patch('/soft-delete/:id', getProduct, async (req, res) => {
-  try {
-    console.log('Soft deleting product:', req.params.id);
-    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
-    
-    // Add delete log to change history
-    res.product.changeHistory = [
-      ...(res.product.changeHistory || []),
-      {
-        field: 'product',
-        oldValue: JSON.stringify(res.product),
-        newValue: null,
-        changedBy,
-        changedAt: new Date(),
-        changeType: 'delete'
-      }
-    ];
-
-    // Mark as deleted in original collection
-    res.product.deleted = true;
-    res.product.deletedAt = new Date();
-    res.product.deletedBy = changedBy;
-
-    console.log('Product before save - deleted flag:', res.product.deleted);
-    console.log('Product before save - deletedAt:', res.product.deletedAt);
-    console.log('Product before save - deletedBy:', res.product.deletedBy);
-
-    // Save the updated product in original collection
-    await res.product.save();
-    console.log('Product soft deleted successfully in original collection:', res.product.itemName);
-
-    // Copy to deleted_products collection
-    try {
-      const deletedProduct = new DeletedProduct({
-        itemCode: res.product.itemCode,
-        itemName: res.product.itemName,
-        category: res.product.category,
-        buyingPrice: res.product.buyingPrice,
-        sellingPrice: res.product.sellingPrice,
-        stock: res.product.stock,
-        supplierName: res.product.supplierName,
-        newBuyingPrice: res.product.newBuyingPrice,
-        newSellingPrice: res.product.newSellingPrice,
-        newStock: res.product.newStock,
-        oldStock: res.product.oldStock,
-        oldBuyingPrice: res.product.oldBuyingPrice,
-        oldSellingPrice: res.product.oldSellingPrice,
-        changeHistory: res.product.changeHistory,
-        deleted: true,
-        deletedAt: new Date(),
-        deletedBy: changedBy,
-        originalProductId: res.product._id
-      });
-
-      await deletedProduct.save();
-      console.log('Product copied to deleted_products collection successfully');
-      
-      res.json({ 
-        message: 'Product marked as deleted and copied to deleted products collection',
-        originalProductId: res.product._id,
-        deletedProductId: deletedProduct._id
-      });
-    } catch (copyErr) {
-      console.error('Error copying to deleted_products collection:', copyErr);
-      // Even if copying fails, the product is still soft-deleted in original collection
-      res.json({ 
-        message: 'Product marked as deleted but failed to copy to deleted products collection',
-        error: copyErr.message,
-        originalProductId: res.product._id
-      });
-    }
-  } catch (err) {
-    console.error('Error soft deleting product:', err);
     res.status(500).json({ message: err.message });
   }
 });
