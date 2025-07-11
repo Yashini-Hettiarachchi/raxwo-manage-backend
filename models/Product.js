@@ -60,7 +60,11 @@ const productSchema = new mongoose.Schema({
     changedBy: { type: String, required: true },
     changedAt: { type: Date, default: Date.now },
     changeType: { type: String, enum: ['create', 'update', 'delete', 'stock'], required: true }
-  }]
+  }],
+  // Add deleted flag to track soft-deleted products
+  deleted: { type: Boolean, default: false },
+  deletedAt: { type: Date },
+  deletedBy: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);
