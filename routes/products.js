@@ -71,6 +71,7 @@ async function getProduct(req, res, next) {
 
   let product;
   try {
+    // Find product regardless of deleted status
     product = await Product.findById(req.params.id);
     if (product == null) {
       return res.status(404).json({ message: 'Cannot find product' });
@@ -678,6 +679,7 @@ router.post('/backfill-stock-history', async (req, res) => {
 // PATCH: Soft delete a product (mark as deleted instead of removing)
 router.patch('/soft-delete/:id', getProduct, async (req, res) => {
   try {
+    console.log('Soft deleting product:', req.params.id);
     const changedBy = req.body.changedBy || req.query.changedBy || 'system';
     
     // Add delete log to change history
@@ -698,9 +700,12 @@ router.patch('/soft-delete/:id', getProduct, async (req, res) => {
     res.product.deletedAt = new Date();
     res.product.deletedBy = changedBy;
 
+    console.log('Saving product with deleted flag:', res.product.itemName);
     await res.product.save();
+    console.log('Product soft deleted successfully:', res.product.itemName);
     res.json({ message: 'Product marked as deleted' });
   } catch (err) {
+    console.error('Error soft deleting product:', err);
     res.status(500).json({ message: err.message });
   }
 });
