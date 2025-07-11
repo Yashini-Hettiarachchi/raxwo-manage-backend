@@ -142,6 +142,70 @@ router.post('/', async (req, res) => {
 router.patch('/:id', getProduct, async (req, res) => {
   const updates = req.body;
   const changes = [];
+  
+  // Handle soft delete
+  if (updates.isDeleted === true) {
+    const changedBy = updates.changedBy || 'system';
+    
+    // Add delete log to change history
+    res.product.changeHistory = [
+      ...(res.product.changeHistory || []),
+      {
+        field: 'product',
+        oldValue: JSON.stringify(res.product),
+        newValue: null,
+        changedBy,
+        changedAt: new Date(),
+        changeType: 'delete'
+      }
+    ];
+
+    // Mark as deleted
+    res.product.deleted = true;
+    res.product.deletedAt = new Date();
+    res.product.deletedBy = changedBy;
+
+    try {
+      await res.product.save();
+      res.json({ message: 'Product marked as deleted' });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+    return;
+  }
+  
+  // Handle soft restore
+  if (updates.isDeleted === false) {
+    const changedBy = updates.changedBy || 'system';
+    
+    // Add restore log to change history
+    res.product.changeHistory = [
+      ...(res.product.changeHistory || []),
+      {
+        field: 'product',
+        oldValue: null,
+        newValue: JSON.stringify(res.product),
+        changedBy,
+        changedAt: new Date(),
+        changeType: 'restore'
+      }
+    ];
+
+    // Mark as not deleted
+    res.product.deleted = false;
+    res.product.deletedAt = undefined;
+    res.product.deletedBy = undefined;
+
+    try {
+      await res.product.save();
+      res.json({ message: 'Product restored successfully' });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+    return;
+  }
+  
+  // Handle regular updates
   for (const [field, newValue] of Object.entries(updates)) {
     if (res.product[field] != newValue) {
       changes.push({
