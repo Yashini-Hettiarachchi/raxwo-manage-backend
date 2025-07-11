@@ -7,6 +7,7 @@ const Product = require('../models/Product');
 const ExcelProduct = require('../models/ExcelProduct');
 const DeletedProductLog = require('../models/DeletedProductLog');
 const DeletedProduct = require('../models/DeletedProduct');
+const InactiveProduct = require('../models/InactiveProduct');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -207,11 +208,6 @@ router.patch('/soft-delete/:id', getProduct, async (req, res) => {
   }
 });
 
-// GET: Get a single product by ID
-router.get('/:id', getProduct, (req, res) => {
-  res.json(res.product);
-});
-
 // POST: Log a product deletion (for tracking deletions from frontend)
 router.post('/deletion-log', async (req, res) => {
   try {
@@ -266,6 +262,11 @@ router.post('/deletion-log', async (req, res) => {
     console.error('Error logging deletion:', err);
     res.status(500).json({ message: err.message });
   }
+});
+
+// GET: Get a single product by ID
+router.get('/:id', getProduct, (req, res) => {
+  res.json(res.product);
 });
 
 // POST: Create a new product
