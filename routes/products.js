@@ -5,6 +5,7 @@ const XLSX = require('xlsx');
 const router = express.Router();
 const Product = require('../models/Product');
 const ExcelProduct = require('../models/ExcelProduct');
+const DeletedProductLog = require('../models/DeletedProductLog');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -221,8 +222,29 @@ router.delete('/:id', getProduct, async (req, res) => {
       }
     ];
     await res.product.save();
+
+    // Archive the product's change history before deletion
+    await DeletedProductLog.create({
+      itemCode: res.product.itemCode,
+      itemName: res.product.itemName,
+      category: res.product.category,
+      supplierName: res.product.supplierName,
+      deletedAt: new Date(),
+      changeHistory: res.product.changeHistory,
+    });
+
     await res.product.deleteOne();
     res.json({ message: 'Deleted Product' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Fetch all deleted product logs
+router.get('/deleted-logs', async (req, res) => {
+  try {
+    const logs = await DeletedProductLog.find().sort({ deletedAt: -1 });
+    res.json(logs);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
