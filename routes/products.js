@@ -284,6 +284,70 @@ router.get('/itemCode/:itemCode', async (req, res) => {
   }
 });
 
+// PATCH: Soft delete a product (mark as deleted instead of removing)
+router.patch('/soft-delete/:id', getProduct, async (req, res) => {
+  try {
+    console.log('Soft deleting product:', req.params.id);
+    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
+    
+    // Add delete log to change history
+    res.product.changeHistory = [
+      ...(res.product.changeHistory || []),
+      {
+        field: 'product',
+        oldValue: JSON.stringify(res.product),
+        newValue: null,
+        changedBy,
+        changedAt: new Date(),
+        changeType: 'delete'
+      }
+    ];
+
+    // Mark as deleted
+    res.product.deleted = true;
+    res.product.deletedAt = new Date();
+    res.product.deletedBy = changedBy;
+
+    console.log('Saving product with deleted flag:', res.product.itemName);
+    await res.product.save();
+    console.log('Product soft deleted successfully:', res.product.itemName);
+    res.json({ message: 'Product marked as deleted' });
+  } catch (err) {
+    console.error('Error soft deleting product:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PATCH: Restore a deleted product
+router.patch('/restore/:id', getProduct, async (req, res) => {
+  try {
+    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
+    
+    // Add restore log to change history
+    res.product.changeHistory = [
+      ...(res.product.changeHistory || []),
+      {
+        field: 'product',
+        oldValue: null,
+        newValue: JSON.stringify(res.product),
+        changedBy,
+        changedAt: new Date(),
+        changeType: 'restore'
+      }
+    ];
+
+    // Mark as not deleted
+    res.product.deleted = false;
+    res.product.deletedAt = undefined;
+    res.product.deletedBy = undefined;
+
+    await res.product.save();
+    res.json({ message: 'Product restored successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // PATCH: Update stock and price of an existing product or create new
 router.patch('/update-stock/:itemCode', async (req, res) => {
   try {
@@ -671,70 +735,6 @@ router.post('/backfill-stock-history', async (req, res) => {
       updatedCount++;
     }
     res.json({ message: `Backfilled stock changeHistory for ${updatedCount} products.` });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// PATCH: Soft delete a product (mark as deleted instead of removing)
-router.patch('/soft-delete/:id', getProduct, async (req, res) => {
-  try {
-    console.log('Soft deleting product:', req.params.id);
-    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
-    
-    // Add delete log to change history
-    res.product.changeHistory = [
-      ...(res.product.changeHistory || []),
-      {
-        field: 'product',
-        oldValue: JSON.stringify(res.product),
-        newValue: null,
-        changedBy,
-        changedAt: new Date(),
-        changeType: 'delete'
-      }
-    ];
-
-    // Mark as deleted
-    res.product.deleted = true;
-    res.product.deletedAt = new Date();
-    res.product.deletedBy = changedBy;
-
-    console.log('Saving product with deleted flag:', res.product.itemName);
-    await res.product.save();
-    console.log('Product soft deleted successfully:', res.product.itemName);
-    res.json({ message: 'Product marked as deleted' });
-  } catch (err) {
-    console.error('Error soft deleting product:', err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// PATCH: Restore a deleted product
-router.patch('/restore/:id', getProduct, async (req, res) => {
-  try {
-    const changedBy = req.body.changedBy || req.query.changedBy || 'system';
-    
-    // Add restore log to change history
-    res.product.changeHistory = [
-      ...(res.product.changeHistory || []),
-      {
-        field: 'product',
-        oldValue: null,
-        newValue: JSON.stringify(res.product),
-        changedBy,
-        changedAt: new Date(),
-        changeType: 'restore'
-      }
-    ];
-
-    // Mark as not deleted
-    res.product.deleted = false;
-    res.product.deletedAt = undefined;
-    res.product.deletedBy = undefined;
-
-    await res.product.save();
-    res.json({ message: 'Product restored successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
