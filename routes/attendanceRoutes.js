@@ -3,12 +3,23 @@ const router = express.Router();
 const Attendance = require("../models/attendanceModel");
 const Cashier = require("../models/cashierModel");
 
+// Helper function to get current time in HH:MM:SS format
+const getCurrentTime = () => {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
+};
+
 // Mark Attendance
 router.post("/", async (req, res) => {
   try {
-    const { cashierId, remarks } = req.body;
+    const { cashierId, remarks, clientTime } = req.body;
     const today = new Date().toISOString().split("T")[0]; // Get today's date (YYYY-MM-DD)
-    const timeNow = new Date().toLocaleTimeString(); // Get current time
+    
+    // Use client time if provided, otherwise use server time
+    const timeNow = clientTime || getCurrentTime();
 
     const existingRecords = await Attendance.find({ cashierId, date: today });
 
