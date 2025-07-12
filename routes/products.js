@@ -713,9 +713,8 @@ router.patch('/update-stock/:itemCode', async (req, res) => {
     if (newSellingPrice === undefined || newSellingPrice === null || newSellingPrice === '' || isNaN(Number(newSellingPrice)) || Number(newSellingPrice) < 0) {
       return res.status(400).json({ message: 'New selling price is required and must be a non-negative number' });
     }
-    if (!supplierName || typeof supplierName !== 'string' || supplierName.trim() === '') {
-      return res.status(400).json({ message: 'Supplier name is required and must be a non-empty string' });
-    }
+    // Supplier name is now optional - use empty string if not provided
+    const finalSupplierName = supplierName || '';
 
     let product = await Product.findOne({ itemCode });
 
@@ -726,26 +725,26 @@ router.patch('/update-stock/:itemCode', async (req, res) => {
         return res.status(400).json({ message: "Item Code already exists. Please use a unique Item Code." });
       }
 
-      // Create new product if it doesn't exist
-      product = new Product({
-        itemCode,
-        itemName,
-        category,
-        buyingPrice: Number(newBuyingPrice),
-        sellingPrice: Number(newSellingPrice),
-        stock: Number(newStock),
-        supplierName,
-        deleted: false, // Explicitly set as not deleted
-        visible: true, // Explicitly set as visible
-        changeHistory: [{
-          field: 'creation',
-          oldValue: null,
-          newValue: { itemCode, itemName, category, buyingPrice: Number(newBuyingPrice), sellingPrice: Number(newSellingPrice), stock: Number(newStock), supplierName },
-          changedBy: req.body.changedBy || 'system',
-          changedAt: new Date(),
-          changeType: 'create'
-        }]
-      });
+              // Create new product if it doesn't exist
+        product = new Product({
+          itemCode,
+          itemName,
+          category,
+          buyingPrice: Number(newBuyingPrice),
+          sellingPrice: Number(newSellingPrice),
+          stock: Number(newStock),
+          supplierName: finalSupplierName,
+          deleted: false, // Explicitly set as not deleted
+          visible: true, // Explicitly set as visible
+          changeHistory: [{
+            field: 'creation',
+            oldValue: null,
+            newValue: { itemCode, itemName, category, buyingPrice: Number(newBuyingPrice), sellingPrice: Number(newSellingPrice), stock: Number(newStock), supplierName: finalSupplierName },
+            changedBy: req.body.changedBy || 'system',
+            changedAt: new Date(),
+            changeType: 'create'
+          }]
+        });
     } else {
       // Log stock change
       const changes = [];
@@ -786,7 +785,7 @@ router.patch('/update-stock/:itemCode', async (req, res) => {
       product.stock += Number(newStock);
       product.buyingPrice = Number(newBuyingPrice);
       product.sellingPrice = Number(newSellingPrice);
-      product.supplierName = supplierName;
+      product.supplierName = finalSupplierName;
     }
 
     const updatedProduct = await product.save();
