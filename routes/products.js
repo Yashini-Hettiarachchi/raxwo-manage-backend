@@ -887,7 +887,7 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
       
       try {
         console.log(`Processing row ${i + 1}:`, row);
-        // Extract data from Excel row
+        // Extract data from Excel row - all fields are optional
         const itemName = row['Item Name'] || row['itemName'] || row['ItemName'];
         const category = row['Category'] || row['category'];
         const buyingPrice = parseFloat(String(row['Buying Price'] || row['buyingPrice'] || row['BuyingPrice'] || 0).replace(/Rs\.?\s*/, ''));
@@ -898,38 +898,54 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
 
         console.log(`Extracted data for row ${i + 1}:`, { itemName, category, buyingPrice, sellingPrice, stock, supplierName, itemCode });
 
-        if (!itemName) {
-          errors.push({ row: i + 1, error: 'Item Name is required' });
-          continue;
-        }
+        // Make all fields optional - provide default values for missing fields
+        // Default values: Item Name = "Product-{timestamp}-{row}", Category = "General", 
+        // Prices = 0, Stock = 0, Supplier = "", Item Code = auto-generated
+        const finalItemName = itemName || `Product-${Date.now()}-${i}`;
+        const finalCategory = category || 'General';
+        const finalBuyingPrice = buyingPrice || 0;
+        const finalSellingPrice = sellingPrice || 0;
+        const finalStock = stock || 0;
+        const finalSupplierName = supplierName || '';
+        const finalItemCode = itemCode || `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
-        console.log(`Processing item "${itemName}" - replaceMode: ${replaceMode}, addMode: ${addMode}`);
+        console.log(`Final data for row ${i + 1}:`, { 
+          itemName: finalItemName, 
+          category: finalCategory, 
+          buyingPrice: finalBuyingPrice, 
+          sellingPrice: finalSellingPrice, 
+          stock: finalStock, 
+          supplierName: finalSupplierName, 
+          itemCode: finalItemCode 
+        });
+
+        console.log(`Processing item "${finalItemName}" - replaceMode: ${replaceMode}, addMode: ${addMode}`);
         // Always create new products regardless of duplicates
-        console.log('Creating new product:', itemName);
+        console.log('Creating new product:', finalItemName);
         const changeHistory = [{
           field: 'creation',
           oldValue: null,
-          newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+          newValue: { itemName: finalItemName, category: finalCategory, buyingPrice: finalBuyingPrice, sellingPrice: finalSellingPrice, stock: finalStock, supplierName: finalSupplierName },
           changedBy: username,
           changedAt: new Date(),
           changeType: 'create'
         }];
 
         const newProduct = new Product({
-          itemCode,
-          itemName,
-          category,
-          buyingPrice,
-          sellingPrice,
-          stock,
-          supplierName,
+          itemCode: finalItemCode,
+          itemName: finalItemName,
+          category: finalCategory,
+          buyingPrice: finalBuyingPrice,
+          sellingPrice: finalSellingPrice,
+          stock: finalStock,
+          supplierName: finalSupplierName,
           deleted: false,
           visible: true,
           changeHistory
         });
 
         await newProduct.save();
-        results.push({ action: 'created', itemName, itemCode });
+        results.push({ action: 'created', itemName: finalItemName, itemCode: finalItemCode });
       } catch (error) {
         errors.push({ row: i + 1, error: error.message });
       }
