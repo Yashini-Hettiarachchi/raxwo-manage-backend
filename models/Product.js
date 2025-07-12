@@ -12,16 +12,19 @@ const productSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    required: [true, 'Product category is required']
+    required: false,
+    default: "General"
   },
   buyingPrice: {
     type: Number,
-    required: [true, 'Buying price is required'],
+    required: false,
+    default: 0,
     min: [0, 'Price must be positive']
   },
   sellingPrice: {
     type: Number,
-    required: [true, 'Selling price is required'],
+    required: false,
+    default: 0,
     min: [0, 'Price must be positive']
   },
   stock: {
@@ -31,8 +34,8 @@ const productSchema = new mongoose.Schema({
   },
   supplierName: {
     type: String,
-    required: [true, 'Supplier name is required'],
-    default: "Default Supplier"
+    required: false,
+    default: ""
   },
   // New Updated Values
   newBuyingPrice: {

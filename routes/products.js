@@ -944,9 +944,37 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
           changeHistory
         });
 
-        await newProduct.save();
+        try {
+          await newProduct.save();
+        } catch (saveError) {
+          console.error('Save error details:', saveError);
+          // If save fails due to validation, try with minimal required fields
+          const minimalProduct = new Product({
+            itemCode: finalItemCode,
+            itemName: finalItemName,
+            category: finalCategory || 'General',
+            buyingPrice: finalBuyingPrice || 0,
+            sellingPrice: finalSellingPrice || 0,
+            stock: finalStock || 0,
+            supplierName: finalSupplierName || '',
+            deleted: false,
+            visible: true,
+            changeHistory
+          });
+          await minimalProduct.save();
+        }
         results.push({ action: 'created', itemName: finalItemName, itemCode: finalItemCode });
       } catch (error) {
+        console.error(`Error processing row ${i + 1}:`, error);
+        console.error('Error details:', {
+          itemName: finalItemName,
+          category: finalCategory,
+          buyingPrice: finalBuyingPrice,
+          sellingPrice: finalSellingPrice,
+          stock: finalStock,
+          supplierName: finalSupplierName,
+          itemCode: finalItemCode
+        });
         errors.push({ row: i + 1, error: error.message });
       }
     }
