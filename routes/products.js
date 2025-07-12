@@ -862,8 +862,10 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
 
     const username = req.body.uploadedBy || 'system';
     const replaceMode = req.body.replaceMode === 'true';
-    const addMode = req.body.addMode === 'true';
+    const addMode = req.body.addMode === 'true' || req.body.addMode === true;
     console.log('Excel upload mode - replaceMode:', replaceMode, 'addMode:', addMode);
+    console.log('Request body addMode value:', req.body.addMode);
+    console.log('Request body addMode type:', typeof req.body.addMode);
     console.log('Request body:', req.body);
     const results = [];
     const errors = [];
@@ -884,6 +886,7 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
       const row = jsonData[i];
       
       try {
+        console.log(`Processing row ${i + 1}:`, row);
         // Extract data from Excel row
         const itemName = row['Item Name'] || row['itemName'] || row['ItemName'];
         const category = row['Category'] || row['category'];
@@ -893,13 +896,17 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
         const supplierName = row['Supplier'] || row['supplierName'] || row['SupplierName'];
         const itemCode = row['Item Code'] || row['itemCode'] || row['ItemCode'] || `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
+        console.log(`Extracted data for row ${i + 1}:`, { itemName, category, buyingPrice, sellingPrice, stock, supplierName, itemCode });
+
         if (!itemName) {
           errors.push({ row: i + 1, error: 'Item Name is required' });
           continue;
         }
 
+        console.log(`Processing item "${itemName}" - replaceMode: ${replaceMode}, addMode: ${addMode}`);
         // In replace mode, always create new products
         if (replaceMode) {
+          console.log('Processing in replaceMode for item:', itemName);
           // Create new product
           const changeHistory = [{
             field: 'creation',
@@ -925,7 +932,7 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
 
           await newProduct.save();
           results.push({ action: 'created', itemName, itemCode });
-        } else if (addMode) {
+        } else if (addMode || req.body.addMode === 'true' || req.body.addMode === true) {
           console.log('Processing in addMode for item:', itemName);
           // In add mode, always add the product regardless of whether it exists
           
@@ -1078,13 +1085,18 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
             }
           }
         } else {
-          // Normal mode - check if product exists by itemName
+          console.log('Processing in normal mode for item:', itemName);
+          // Since addMode is the expected behavior, let's use addMode logic here too
+          console.log('Falling back to addMode logic for item:', itemName);
+          
+          // Check if product exists in main collection
           let existingProduct = await Product.findOne({ 
             itemName: { $regex: new RegExp('^' + itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
           });
           
           if (existingProduct) {
-            // Update existing product
+            console.log('Product exists in main collection, updating:', itemName);
+            // Update existing product with new data
             const changes = [];
             if (existingProduct.stock !== stock) {
               changes.push({
@@ -1146,37 +1158,89 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
             existingProduct.sellingPrice = sellingPrice;
             existingProduct.category = category;
             existingProduct.supplierName = supplierName;
+            existingProduct.deleted = false; // Ensure it's not deleted
+            existingProduct.visible = true; // Ensure it's visible
 
             await existingProduct.save();
-            results.push({ action: 'updated', itemName, itemCode: existingProduct.itemCode });
+            results.push({ action: 'updated', itemName, itemCode: existingProduct.itemCode, reason: 'Updated existing product' });
           } else {
-            // Create new product
-            const changeHistory = [{
-              field: 'creation',
-              oldValue: null,
-              newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'create'
-            }];
-
-            const newProduct = new Product({
-              itemCode,
-              itemName,
-              category,
-              buyingPrice,
-              sellingPrice,
-              stock,
-              supplierName,
-              deleted: false, // Explicitly set as not deleted
-              visible: true, // Explicitly set as visible
-              changeHistory
+            // Check if product exists in deleted products
+            const DeletedProduct = require('../models/DeletedProduct');
+            
+            // Debug: List all deleted products to see what's available
+            const allDeletedProducts = await DeletedProduct.find({});
+            console.log('All deleted products:', allDeletedProducts.map(dp => dp.itemName));
+            
+            const deletedProduct = await DeletedProduct.findOne({ 
+              itemName: { $regex: new RegExp('^' + itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
             });
+            
+            console.log('Deleted product search result for', itemName, ':', deletedProduct ? 'Found' : 'Not found');
+            
+            if (deletedProduct) {
+              console.log('Found deleted product, restoring:', itemName);
+              // Restore the deleted product with updated data
+              const changeHistory = [{
+                field: 'restore',
+                oldValue: null,
+                newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'restore'
+              }];
 
-            await newProduct.save();
-            results.push({ action: 'created', itemName, itemCode });
+              const restoredProduct = new Product({
+                itemCode: deletedProduct.itemCode || itemCode,
+                itemName: itemName,
+                category: category || deletedProduct.category,
+                buyingPrice: buyingPrice || deletedProduct.buyingPrice,
+                sellingPrice: sellingPrice || deletedProduct.sellingPrice,
+                stock: stock || deletedProduct.stock,
+                supplierName: supplierName || deletedProduct.supplierName,
+                deleted: false, // Explicitly set as not deleted
+                visible: true, // Explicitly set as visible
+                changeHistory: [...(deletedProduct.changeHistory || []), ...changeHistory]
+              });
+
+              await restoredProduct.save();
+              
+              // Remove from deleted products collection
+              await DeletedProduct.findByIdAndDelete(deletedProduct._id);
+              
+              results.push({ action: 'restored', itemName, itemCode: restoredProduct.itemCode, reason: 'Restored from deleted products' });
+            } else {
+              console.log('Creating new product:', itemName);
+              // Create new product
+              const changeHistory = [{
+                field: 'creation',
+                oldValue: null,
+                newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'create'
+              }];
+
+              const newProduct = new Product({
+                itemCode,
+                itemName,
+                category,
+                buyingPrice,
+                sellingPrice,
+                stock,
+                supplierName,
+                deleted: false, // Explicitly set as not deleted
+                visible: true, // Explicitly set as visible
+                changeHistory
+              });
+
+              await newProduct.save();
+              results.push({ action: 'created', itemName, itemCode });
+            }
           }
-        }
+          
+                     // Skip the old normal mode logic since we're using addMode logic above
+           return;
+         }
 
         // If supplier name is provided, add to supplier's cart
         if (supplierName && supplierName.trim() !== '') {
