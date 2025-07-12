@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const itemSchema = new mongoose.Schema({
+const deletedItemSchema = new mongoose.Schema({
   itemCode: { type: String, required: true },
   itemName: { type: String, required: true },
   category: { type: String, required: true },
@@ -10,14 +10,18 @@ const itemSchema = new mongoose.Schema({
   supplierName: { type: String, required: true },
 });
 
-const supplierSchema = new mongoose.Schema({
+const deletedSupplierSchema = new mongoose.Schema({
+  originalSupplierId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Supplier',
+    required: true 
+  },
   date: { type: String, required: true },
   time: { type: String, required: true },
   businessName: { type: String, required: false },
   supplierName: { 
     type: String, 
-    required: [true, 'Supplier name is required'],
-    unique: true,
+    required: [true, 'Supplier name is required']
   },
   phoneNumber: { type: String, required: false },
   address: { type: String, required: false },
@@ -31,19 +35,14 @@ const supplierSchema = new mongoose.Schema({
     default: 0, 
     min: 0 
   },
-  items: [itemSchema],
-  // Add deleted flag to track soft-deleted suppliers
-  deleted: { 
-    type: Boolean, 
-    default: false 
-  },
+  items: [deletedItemSchema],
   deletedAt: { 
     type: Date, 
-    default: null 
+    default: Date.now 
   },
   deletedBy: { 
     type: String, 
-    default: null 
+    required: true 
   },
   // Change history to track modifications
   changeHistory: [{
@@ -56,4 +55,4 @@ const supplierSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
-module.exports = mongoose.models.Supplier || mongoose.model('Supplier', supplierSchema);
+module.exports = mongoose.models.DeletedSupplier || mongoose.model('DeletedSupplier', deletedSupplierSchema); 

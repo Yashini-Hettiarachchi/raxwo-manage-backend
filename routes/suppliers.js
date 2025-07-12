@@ -2,14 +2,35 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Supplier = require('../models/Supplier');
+const DeletedSupplier = require('../models/DeletedSupplier');
 const GRN = require('../models/GRN');
 const Product = require('../models/Product');
 
-// GET: Get all suppliers
+// GET: Get all suppliers (excluding deleted ones)
 router.get('/', async (req, res) => {
   try {
-    const suppliers = await Supplier.find();
+    const suppliers = await Supplier.find({ deleted: { $ne: true } });
     res.json(suppliers);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Get all deleted suppliers
+router.get('/deleted', async (req, res) => {
+  try {
+    const deletedSuppliers = await DeletedSupplier.find().sort({ deletedAt: -1 });
+    res.json(deletedSuppliers);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Get deleted supplier logs
+router.get('/deleted-logs', async (req, res) => {
+  try {
+    const deletedLogs = await DeletedSupplier.find().sort({ deletedAt: -1 });
+    res.json(deletedLogs);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -41,14 +62,14 @@ router.get('/:id', getSupplier, (req, res) => {
 
 // POST: Create a new supplier
 router.post('/', async (req, res) => {
-  console.log('POST /api/suppliers body:', req.body);
-  const supplierData = {
+  const supplier = new Supplier({
     date: req.body.date,
     time: req.body.time,
-    businessName: req.body.businessName || '',
+    businessName: req.body.businessName,
     supplierName: req.body.supplierName,
-    phoneNumber: req.body.phoneNumber || '',
-    address: req.body.address || '',
+    phoneNumber: req.body.phoneNumber,
+    address: req.body.address,
+    receiptNumber: req.body.receiptNumber,
     totalPayments: req.body.totalPayments || 0,
     items: req.body.items || [],
     changeHistory: [{
@@ -59,13 +80,10 @@ router.post('/', async (req, res) => {
       changedAt: new Date(),
       changeType: 'create'
     }]
-  };
-
-  const supplier = new Supplier(supplierData);
+  });
 
   try {
     const newSupplier = await supplier.save();
-    console.log('POST /api/suppliers changeHistory:', newSupplier.changeHistory);
     res.status(201).json(newSupplier);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -111,24 +129,114 @@ router.patch('/:id', getSupplier, async (req, res) => {
   }
 });
 
-// DELETE: Remove a supplier
+// DELETE: Soft delete a supplier
 router.delete('/:id', getSupplier, async (req, res) => {
   console.log('DELETE /api/suppliers/:id body:', req.body);
   try {
+    const changedBy = req.body.changedBy || 'system';
+    
     // Log delete
     res.supplier.changeHistory = [...(res.supplier.changeHistory || []), {
       field: 'deletion',
       oldValue: res.supplier.toObject(),
       newValue: null,
-      changedBy: req.body.changedBy || 'system',
+      changedBy,
       changedAt: new Date(),
       changeType: 'delete'
     }];
+    
+    // Mark as deleted
+    res.supplier.deleted = true;
+    res.supplier.deletedAt = new Date();
+    res.supplier.deletedBy = changedBy;
+    
     await res.supplier.save();
     console.log('DELETE /api/suppliers/:id changeHistory:', res.supplier.changeHistory);
-    await res.supplier.deleteOne();
+    
+    // Archive to DeletedSupplier collection
+    try {
+      await DeletedSupplier.create({
+        originalSupplierId: res.supplier._id,
+        date: res.supplier.date,
+        time: res.supplier.time,
+        businessName: res.supplier.businessName,
+        supplierName: res.supplier.supplierName,
+        phoneNumber: res.supplier.phoneNumber,
+        address: res.supplier.address,
+        receiptNumber: res.supplier.receiptNumber,
+        totalPayments: res.supplier.totalPayments,
+        items: res.supplier.items,
+        deletedAt: new Date(),
+        deletedBy: changedBy,
+        changeHistory: res.supplier.changeHistory
+      });
+    } catch (archiveErr) {
+      console.error('Error archiving deleted supplier:', archiveErr);
+      return res.status(500).json({ message: 'Failed to archive deleted supplier. Supplier was NOT deleted.', error: archiveErr.message });
+    }
+    
     res.json({ message: 'Supplier deleted successfully' });
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PATCH: Restore a deleted supplier
+router.patch('/:id/restore', getSupplier, async (req, res) => {
+  try {
+    if (!res.supplier.deleted) {
+      return res.status(400).json({ message: 'Supplier is not deleted' });
+    }
+    
+    const changedBy = req.body.changedBy || 'system';
+    
+    // Log restore
+    res.supplier.changeHistory = [...(res.supplier.changeHistory || []), {
+      field: 'restoration',
+      oldValue: null,
+      newValue: res.supplier.toObject(),
+      changedBy,
+      changedAt: new Date(),
+      changeType: 'update'
+    }];
+    
+    // Restore supplier
+    res.supplier.deleted = false;
+    res.supplier.deletedAt = null;
+    res.supplier.deletedBy = null;
+    
+    await res.supplier.save();
+    
+    // Remove from DeletedSupplier collection
+    await DeletedSupplier.findOneAndDelete({ originalSupplierId: res.supplier._id });
+    
+    res.json({ message: 'Supplier restored successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE: Permanently delete a supplier from deleted_suppliers collection
+router.delete('/deleted/:id', async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid supplier ID format' });
+    }
+
+    const deletedSupplier = await DeletedSupplier.findById(req.params.id);
+    if (!deletedSupplier) {
+      return res.status(404).json({ message: 'Deleted supplier not found' });
+    }
+
+    // Also permanently delete from original collection if it still exists
+    await Supplier.findByIdAndDelete(deletedSupplier.originalSupplierId);
+
+    // Remove from deleted_suppliers collection
+    await DeletedSupplier.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Supplier permanently deleted from both collections' });
+  } catch (err) {
+    console.error('Error permanently deleting supplier:', err);
     res.status(500).json({ message: err.message });
   }
 });
