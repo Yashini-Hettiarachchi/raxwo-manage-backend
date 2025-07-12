@@ -41,16 +41,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET: Get all deleted products from deleted_products collection
-router.get('/deleted', async (req, res) => {
-  try {
-    const deletedProducts = await DeletedProduct.find().sort({ deletedAt: -1 });
-    res.json(deletedProducts);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // GET: Get a specific deleted product by ID
 router.get('/deleted/:id', async (req, res) => {
   try {
@@ -354,6 +344,19 @@ router.get('/hidden', async (req, res) => {
     const hiddenProducts = await Product.find({ visible: false }).sort({ hiddenAt: -1 });
     res.json(hiddenProducts);
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Get all deleted products from deleted_products collection
+router.get('/deleted', async (req, res) => {
+  try {
+    console.log('Fetching deleted products...');
+    const deletedProducts = await DeletedProduct.find().sort({ deletedAt: -1 });
+    console.log(`Found ${deletedProducts.length} deleted products`);
+    res.json(deletedProducts);
+  } catch (err) {
+    console.error('Error fetching deleted products:', err);
     res.status(500).json({ message: err.message });
   }
 });
