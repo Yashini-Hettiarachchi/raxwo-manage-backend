@@ -402,6 +402,8 @@ router.post('/', async (req, res) => {
       sellingPrice: req.body.sellingPrice,
       stock: req.body.stock,
       supplierName: req.body.supplierName,
+      deleted: false, // Explicitly set as not deleted
+      visible: true, // Explicitly set as visible
       changeHistory
     });
 
@@ -733,6 +735,8 @@ router.patch('/update-stock/:itemCode', async (req, res) => {
         sellingPrice: Number(newSellingPrice),
         stock: Number(newStock),
         supplierName,
+        deleted: false, // Explicitly set as not deleted
+        visible: true, // Explicitly set as visible
         changeHistory: [{
           field: 'creation',
           oldValue: null,
@@ -914,6 +918,8 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
             sellingPrice,
             stock,
             supplierName,
+            deleted: false, // Explicitly set as not deleted
+            visible: true, // Explicitly set as visible
             changeHistory
           });
 
@@ -965,6 +971,8 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
                 sellingPrice: sellingPrice || deletedProduct.sellingPrice,
                 stock: stock || deletedProduct.stock,
                 supplierName: supplierName || deletedProduct.supplierName,
+                deleted: false, // Explicitly set as not deleted
+                visible: true, // Explicitly set as visible
                 changeHistory: [...(deletedProduct.changeHistory || []), ...changeHistory]
               });
 
@@ -994,6 +1002,8 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
                 sellingPrice,
                 stock,
                 supplierName,
+                deleted: false, // Explicitly set as not deleted
+                visible: true, // Explicitly set as visible
                 changeHistory
               });
 
@@ -1092,6 +1102,8 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
               sellingPrice,
               stock,
               supplierName,
+              deleted: false, // Explicitly set as not deleted
+              visible: true, // Explicitly set as visible
               changeHistory
             });
 
