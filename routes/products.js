@@ -859,6 +859,8 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
     const username = req.body.uploadedBy || 'system';
     const replaceMode = req.body.replaceMode === 'true';
     const addMode = req.body.addMode === 'true';
+    console.log('Excel upload mode - replaceMode:', replaceMode, 'addMode:', addMode);
+    console.log('Request body:', req.body);
     const results = [];
     const errors = [];
 
@@ -918,18 +920,33 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
           await newProduct.save();
           results.push({ action: 'created', itemName, itemCode });
         } else if (addMode) {
+          console.log('Processing in addMode for item:', itemName);
           // In add mode, check if product exists by itemName, if not create new
-          let existingProduct = await Product.findOne({ itemName: itemName });
+          let existingProduct = await Product.findOne({ 
+            itemName: { $regex: new RegExp('^' + itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
+          });
           
           if (existingProduct) {
+            console.log('Product exists, skipping:', itemName);
             // Product exists, skip it (don't update)
             results.push({ action: 'skipped', itemName, itemCode: existingProduct.itemCode, reason: 'Product already exists' });
           } else {
+            console.log('Product does not exist, checking deleted products for:', itemName);
             // Check if product exists in deleted products
             const DeletedProduct = require('../models/DeletedProduct');
-            const deletedProduct = await DeletedProduct.findOne({ itemName: itemName });
+            
+            // Debug: List all deleted products to see what's available
+            const allDeletedProducts = await DeletedProduct.find({});
+            console.log('All deleted products:', allDeletedProducts.map(dp => dp.itemName));
+            
+            const deletedProduct = await DeletedProduct.findOne({ 
+              itemName: { $regex: new RegExp('^' + itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
+            });
+            
+            console.log('Deleted product search result for', itemName, ':', deletedProduct ? 'Found' : 'Not found');
             
             if (deletedProduct) {
+              console.log('Found deleted product, restoring:', itemName);
               // Restore the deleted product with updated data
               const changeHistory = [{
                 field: 'restore',
@@ -958,6 +975,7 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
               
               results.push({ action: 'restored', itemName, itemCode: restoredProduct.itemCode, reason: 'Restored from deleted products' });
             } else {
+              console.log('Creating new product:', itemName);
               // Create new product
               const changeHistory = [{
                 field: 'creation',
@@ -985,7 +1003,9 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
           }
         } else {
           // Normal mode - check if product exists by itemName
-          let existingProduct = await Product.findOne({ itemName: itemName });
+          let existingProduct = await Product.findOne({ 
+            itemName: { $regex: new RegExp('^' + itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
+          });
           
           if (existingProduct) {
             // Update existing product
@@ -1085,12 +1105,15 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
           try {
             // Find supplier by name
             const Supplier = require('../models/Supplier');
-            const supplier = await Supplier.findOne({ supplierName: supplierName.trim() });
+            const supplier = await Supplier.findOne({ 
+              supplierName: { $regex: new RegExp('^' + supplierName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
+            });
             
             if (supplier) {
               // Check if item already exists in supplier's cart
               const existingCartItem = supplier.items.find(item => 
-                item.itemCode === itemCode || item.itemName === itemName
+                item.itemCode === itemCode || 
+                item.itemName.toLowerCase() === itemName.toLowerCase()
               );
               
               if (!existingCartItem) {
