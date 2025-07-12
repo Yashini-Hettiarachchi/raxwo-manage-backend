@@ -32,19 +32,6 @@ const supplierSchema = new mongoose.Schema({
     min: 0 
   },
   items: [itemSchema],
-  // Add deleted flag to track soft-deleted suppliers
-  deleted: { 
-    type: Boolean, 
-    default: false 
-  },
-  deletedAt: { 
-    type: Date, 
-    default: null 
-  },
-  deletedBy: { 
-    type: String, 
-    default: null 
-  },
   // Change history to track modifications
   changeHistory: [{
     field: { type: String, required: true },

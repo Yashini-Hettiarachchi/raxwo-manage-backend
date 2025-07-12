@@ -969,6 +969,58 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
           await newProduct.save();
           results.push({ action: 'created', itemName, itemCode });
         }
+
+        // If supplier name is provided, add to supplier's cart
+        if (supplierName && supplierName.trim() !== '') {
+          try {
+            // Find supplier by name
+            const Supplier = require('../models/Supplier');
+            const supplier = await Supplier.findOne({ supplierName: supplierName.trim() });
+            
+            if (supplier) {
+              // Check if item already exists in supplier's cart
+              const existingCartItem = supplier.items.find(item => 
+                item.itemCode === itemCode || item.itemName === itemName
+              );
+              
+              if (!existingCartItem) {
+                // Add item to supplier's cart
+                const cartItem = {
+                  itemCode: itemCode,
+                  itemName: itemName,
+                  category: category,
+                  quantity: stock,
+                  buyingPrice: buyingPrice,
+                  sellingPrice: sellingPrice,
+                  supplierName: supplierName,
+                  grnNumber: `GRN-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+                };
+                
+                supplier.items.push(cartItem);
+                
+                // Log cart add to supplier's change history
+                supplier.changeHistory = [...(supplier.changeHistory || []), {
+                  field: 'cart-add',
+                  oldValue: null,
+                  newValue: cartItem,
+                  changedBy: username,
+                  changedAt: new Date(),
+                  changeType: 'cart'
+                }];
+                
+                await supplier.save();
+                console.log(`Added ${itemName} to ${supplierName}'s cart via Excel upload`);
+              } else {
+                console.log(`Item ${itemName} already exists in ${supplierName}'s cart`);
+              }
+            } else {
+              console.log(`Supplier ${supplierName} not found - item not added to cart`);
+            }
+          } catch (supplierError) {
+            console.error(`Error adding item to supplier cart: ${supplierError.message}`);
+            // Don't fail the entire upload for supplier cart errors
+          }
+        }
       } catch (error) {
         errors.push({ row: i + 1, error: error.message });
       }
