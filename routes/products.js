@@ -857,8 +857,21 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
     }
 
     const username = req.body.uploadedBy || 'system';
+    const replaceMode = req.body.replaceMode === 'true';
     const results = [];
     const errors = [];
+
+    // If in replace mode, delete all existing products first
+    if (replaceMode) {
+      try {
+        console.log('Replace mode enabled - deleting all existing products');
+        await Product.deleteMany({});
+        console.log('All existing products deleted');
+      } catch (deleteError) {
+        console.error('Error deleting existing products:', deleteError);
+        return res.status(500).json({ message: 'Error deleting existing products: ' + deleteError.message });
+      }
+    }
 
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
@@ -878,76 +891,8 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
           continue;
         }
 
-        // Check if product exists by itemName
-        let existingProduct = await Product.findOne({ itemName: itemName });
-        
-        if (existingProduct) {
-          // Update existing product
-          const changes = [];
-          if (existingProduct.stock !== stock) {
-            changes.push({
-              field: 'stock',
-              oldValue: existingProduct.stock,
-              newValue: stock,
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'update'
-            });
-          }
-          if (existingProduct.buyingPrice !== buyingPrice) {
-            changes.push({
-              field: 'buyingPrice',
-              oldValue: existingProduct.buyingPrice,
-              newValue: buyingPrice,
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'update'
-            });
-          }
-          if (existingProduct.sellingPrice !== sellingPrice) {
-            changes.push({
-              field: 'sellingPrice',
-              oldValue: existingProduct.sellingPrice,
-              newValue: sellingPrice,
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'update'
-            });
-          }
-          if (existingProduct.category !== category) {
-            changes.push({
-              field: 'category',
-              oldValue: existingProduct.category,
-              newValue: category,
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'update'
-            });
-          }
-          if (existingProduct.supplierName !== supplierName) {
-            changes.push({
-              field: 'supplierName',
-              oldValue: existingProduct.supplierName,
-              newValue: supplierName,
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'update'
-            });
-          }
-
-          if (changes.length > 0) {
-            existingProduct.changeHistory = [...(existingProduct.changeHistory || []), ...changes];
-          }
-
-          existingProduct.stock = stock;
-          existingProduct.buyingPrice = buyingPrice;
-          existingProduct.sellingPrice = sellingPrice;
-          existingProduct.category = category;
-          existingProduct.supplierName = supplierName;
-
-          await existingProduct.save();
-          results.push({ action: 'updated', itemName, itemCode: existingProduct.itemCode });
-        } else {
+        // In replace mode, always create new products
+        if (replaceMode) {
           // Create new product
           const changeHistory = [{
             field: 'creation',
@@ -971,6 +916,101 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
 
           await newProduct.save();
           results.push({ action: 'created', itemName, itemCode });
+        } else {
+          // Normal mode - check if product exists by itemName
+          let existingProduct = await Product.findOne({ itemName: itemName });
+          
+          if (existingProduct) {
+            // Update existing product
+            const changes = [];
+            if (existingProduct.stock !== stock) {
+              changes.push({
+                field: 'stock',
+                oldValue: existingProduct.stock,
+                newValue: stock,
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'update'
+              });
+            }
+            if (existingProduct.buyingPrice !== buyingPrice) {
+              changes.push({
+                field: 'buyingPrice',
+                oldValue: existingProduct.buyingPrice,
+                newValue: buyingPrice,
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'update'
+              });
+            }
+            if (existingProduct.sellingPrice !== sellingPrice) {
+              changes.push({
+                field: 'sellingPrice',
+                oldValue: existingProduct.sellingPrice,
+                newValue: sellingPrice,
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'update'
+              });
+            }
+            if (existingProduct.category !== category) {
+              changes.push({
+                field: 'category',
+                oldValue: existingProduct.category,
+                newValue: category,
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'update'
+              });
+            }
+            if (existingProduct.supplierName !== supplierName) {
+              changes.push({
+                field: 'supplierName',
+                oldValue: existingProduct.supplierName,
+                newValue: supplierName,
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'update'
+              });
+            }
+
+            if (changes.length > 0) {
+              existingProduct.changeHistory = [...(existingProduct.changeHistory || []), ...changes];
+            }
+
+            existingProduct.stock = stock;
+            existingProduct.buyingPrice = buyingPrice;
+            existingProduct.sellingPrice = sellingPrice;
+            existingProduct.category = category;
+            existingProduct.supplierName = supplierName;
+
+            await existingProduct.save();
+            results.push({ action: 'updated', itemName, itemCode: existingProduct.itemCode });
+          } else {
+            // Create new product
+            const changeHistory = [{
+              field: 'creation',
+              oldValue: null,
+              newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+              changedBy: username,
+              changedAt: new Date(),
+              changeType: 'create'
+            }];
+
+            const newProduct = new Product({
+              itemCode,
+              itemName,
+              category,
+              buyingPrice,
+              sellingPrice,
+              stock,
+              supplierName,
+              changeHistory
+            });
+
+            await newProduct.save();
+            results.push({ action: 'created', itemName, itemCode });
+          }
         }
 
         // If supplier name is provided, add to supplier's cart
