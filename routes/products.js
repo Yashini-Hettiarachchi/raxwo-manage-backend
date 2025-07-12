@@ -858,6 +858,7 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
 
     const username = req.body.uploadedBy || 'system';
     const replaceMode = req.body.replaceMode === 'true';
+    const addMode = req.body.addMode === 'true';
     const results = [];
     const errors = [];
 
@@ -916,6 +917,38 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
 
           await newProduct.save();
           results.push({ action: 'created', itemName, itemCode });
+        } else if (addMode) {
+          // In add mode, check if product exists by itemName, if not create new
+          let existingProduct = await Product.findOne({ itemName: itemName });
+          
+          if (existingProduct) {
+            // Product exists, skip it (don't update)
+            results.push({ action: 'skipped', itemName, itemCode: existingProduct.itemCode, reason: 'Product already exists' });
+          } else {
+            // Create new product
+            const changeHistory = [{
+              field: 'creation',
+              oldValue: null,
+              newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+              changedBy: username,
+              changedAt: new Date(),
+              changeType: 'create'
+            }];
+
+            const newProduct = new Product({
+              itemCode,
+              itemName,
+              category,
+              buyingPrice,
+              sellingPrice,
+              stock,
+              supplierName,
+              changeHistory
+            });
+
+            await newProduct.save();
+            results.push({ action: 'created', itemName, itemCode });
+          }
         } else {
           // Normal mode - check if product exists by itemName
           let existingProduct = await Product.findOne({ itemName: itemName });
