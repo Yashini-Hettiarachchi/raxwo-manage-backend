@@ -925,29 +925,63 @@ router.post('/upload-excel', upload.single('file'), async (req, res) => {
             // Product exists, skip it (don't update)
             results.push({ action: 'skipped', itemName, itemCode: existingProduct.itemCode, reason: 'Product already exists' });
           } else {
-            // Create new product
-            const changeHistory = [{
-              field: 'creation',
-              oldValue: null,
-              newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
-              changedBy: username,
-              changedAt: new Date(),
-              changeType: 'create'
-            }];
+            // Check if product exists in deleted products
+            const DeletedProduct = require('../models/DeletedProduct');
+            const deletedProduct = await DeletedProduct.findOne({ itemName: itemName });
+            
+            if (deletedProduct) {
+              // Restore the deleted product with updated data
+              const changeHistory = [{
+                field: 'restore',
+                oldValue: null,
+                newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'restore'
+              }];
 
-            const newProduct = new Product({
-              itemCode,
-              itemName,
-              category,
-              buyingPrice,
-              sellingPrice,
-              stock,
-              supplierName,
-              changeHistory
-            });
+              const restoredProduct = new Product({
+                itemCode: deletedProduct.itemCode || itemCode,
+                itemName: itemName,
+                category: category || deletedProduct.category,
+                buyingPrice: buyingPrice || deletedProduct.buyingPrice,
+                sellingPrice: sellingPrice || deletedProduct.sellingPrice,
+                stock: stock || deletedProduct.stock,
+                supplierName: supplierName || deletedProduct.supplierName,
+                changeHistory: [...(deletedProduct.changeHistory || []), ...changeHistory]
+              });
 
-            await newProduct.save();
-            results.push({ action: 'created', itemName, itemCode });
+              await restoredProduct.save();
+              
+              // Remove from deleted products collection
+              await DeletedProduct.findByIdAndDelete(deletedProduct._id);
+              
+              results.push({ action: 'restored', itemName, itemCode: restoredProduct.itemCode, reason: 'Restored from deleted products' });
+            } else {
+              // Create new product
+              const changeHistory = [{
+                field: 'creation',
+                oldValue: null,
+                newValue: { itemName, category, buyingPrice, sellingPrice, stock, supplierName },
+                changedBy: username,
+                changedAt: new Date(),
+                changeType: 'create'
+              }];
+
+              const newProduct = new Product({
+                itemCode,
+                itemName,
+                category,
+                buyingPrice,
+                sellingPrice,
+                stock,
+                supplierName,
+                changeHistory
+              });
+
+              await newProduct.save();
+              results.push({ action: 'created', itemName, itemCode });
+            }
           }
         } else {
           // Normal mode - check if product exists by itemName
