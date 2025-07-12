@@ -45,8 +45,10 @@ const salaryRoutes = require("./routes/salary");
 const deviceIssuesRouter = require("./routes/deviceIssues");
 const deviceTypesRoutes = require("./routes/deviceTypes");
 const extraIncomeRoutes = require("./routes/extraIncome");
+const clickedProductRoutes = require("./routes/clickedProducts");
 
 app.use("/api/extra-income", extraIncomeRoutes);
+app.use("/api/clicked-products", clickedProductRoutes);
 
 app.use("/api/deviceTypes", deviceTypesRoutes);
 app.use("/api/deviceIssues", deviceIssuesRouter);

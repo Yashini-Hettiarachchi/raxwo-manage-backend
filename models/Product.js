@@ -68,7 +68,11 @@ const productSchema = new mongoose.Schema({
   // Add visible flag to track product visibility
   visible: { type: Boolean, default: true },
   hiddenAt: { type: Date },
-  hiddenBy: { type: String }
+  hiddenBy: { type: String },
+  // Add clicked flag to track if product has been clicked with Add Product button
+  clickedForAdd: { type: Boolean, default: false },
+  clickedAt: { type: Date },
+  clickedBy: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);
