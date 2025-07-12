@@ -93,7 +93,7 @@ router.delete('/:id', async (req, res) => {
       clickedBy: null
     });
 
-    await clickedProduct.remove();
+    await clickedProduct.deleteOne();
     res.json({ message: 'Clicked product record removed' });
   } catch (err) {
     res.status(500).json({ message: err.message });
